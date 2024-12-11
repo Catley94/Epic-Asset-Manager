@@ -1,5 +1,5 @@
 use crate::ui::widgets::logged_in::library::sidebar::categories::EpicSidebarCategories;
-use gtk4::glib::{clone, Priority};
+use gtk4::glib::clone;
 use gtk4::subclass::prelude::*;
 use gtk4::{self, gio, prelude::*};
 use gtk4::{glib, CompositeTemplate};
@@ -30,13 +30,9 @@ pub mod imp {
         pub loggedin: OnceCell<crate::ui::widgets::logged_in::library::EpicLibraryBox>,
         pub expanded: RefCell<bool>,
         #[template_child]
-        pub expand_button: TemplateChild<gtk4::Button>,
+        pub expand_button: TemplateChild<gtk4::ToggleButton>, // TODO: Somehow use the EpicAssetManagerWindow's expand_button instead
         #[template_child]
         pub expand_image: TemplateChild<gtk4::Image>,
-        #[template_child]
-        pub expand_label: TemplateChild<gtk4::Label>,
-        #[template_child]
-        pub marketplace_label: TemplateChild<gtk4::Label>,
         #[template_child]
         pub stack: TemplateChild<gtk4::Stack>,
         #[template_child]
@@ -46,9 +42,9 @@ pub mod imp {
         #[template_child]
         pub games_category: TemplateChild<button::EpicSidebarButton>,
         #[template_child]
-        pub downloaded_switch: TemplateChild<gtk4::Switch>,
+        pub downloaded_filter: TemplateChild<gtk4::ToggleButton>,
         #[template_child]
-        pub favorites_switch: TemplateChild<gtk4::Switch>,
+        pub favorites_filter: TemplateChild<gtk4::ToggleButton>,
     }
 
     #[glib::object_subclass]
@@ -66,14 +62,12 @@ pub mod imp {
                 expanded: RefCell::new(false),
                 expand_button: TemplateChild::default(),
                 expand_image: TemplateChild::default(),
-                expand_label: TemplateChild::default(),
-                marketplace_label: TemplateChild::default(),
                 stack: TemplateChild::default(),
                 all_category: TemplateChild::default(),
                 unreal_category: TemplateChild::default(),
                 games_category: TemplateChild::default(),
-                downloaded_switch: TemplateChild::default(),
-                favorites_switch: TemplateChild::default(),
+                downloaded_filter: TemplateChild::default(),
+                favorites_filter: TemplateChild::default(),
                 settings: gio::Settings::new(crate::config::APP_ID),
             }
         }
@@ -179,16 +173,24 @@ impl EpicSidebar {
         action!(
             self_.actions,
             "expand",
-            clone!(@weak self as sidebar => move |_, _| {
-                sidebar.expand();
-            })
+            clone!(
+                #[weak(rename_to=sidebar)]
+                self,
+                move |_, _| {
+                    sidebar.expand();
+                }
+            )
         );
         action!(
             self_.actions,
             "marketplace",
-            clone!(@weak self as sidebar => move |_, _| {
-                sidebar.open_marketplace();
-            })
+            clone!(
+                #[weak(rename_to=sidebar)]
+                self,
+                move |_, _| {
+                    sidebar.open_marketplace();
+                }
+            )
         );
     }
 
@@ -197,15 +199,13 @@ impl EpicSidebar {
         if let Some(window) = self_.window.get() {
             let win_ = window.imp();
             let mut eg = win_.model.borrow().epic_games.borrow().clone();
-            let (sender, receiver) = gtk4::glib::MainContext::channel(Priority::default());
+            let (sender, receiver) = async_channel::unbounded::<String>();
 
-            receiver.attach(
-                None,
-                clone!(@weak self as sidebar => @default-panic, move |code:String| {
-                    open_browser(&code);
-                    glib::ControlFlow::Break
-                }),
-            );
+            glib::spawn_future_local(async move {
+                while let Ok(response) = receiver.recv().await {
+                    open_browser(&response);
+                }
+            });
 
             thread::spawn(move || {
                 match Builder::new_current_thread()
@@ -216,7 +216,7 @@ impl EpicSidebar {
                 {
                     None => {}
                     Some(token) => {
-                        sender.send(token.code).unwrap();
+                        sender.send_blocking(token.code).unwrap();
                     }
                 }
             });
@@ -245,16 +245,20 @@ impl EpicSidebar {
         c.set_widget_name("all");
         self_.stack.add_named(&c, Some("all"));
 
-        self_
-            .favorites_switch
-            .connect_state_notify(clone!(@weak self as sidebar => move |_| {
+        self_.favorites_filter.connect_toggled(clone!(
+            #[weak(rename_to=sidebar)]
+            self,
+            move |_| {
                 sidebar.filter_changed();
-            }));
-        self_
-            .downloaded_switch
-            .connect_state_notify(clone!(@weak self as sidebar => move |_| {
+            }
+        ));
+        self_.downloaded_filter.connect_toggled(clone!(
+            #[weak(rename_to=sidebar)]
+            self,
+            move |_| {
                 sidebar.filter_changed();
-            }));
+            }
+        ));
 
         if self_.settings.boolean("sidebar-expanded") {
             self.expand();
@@ -285,13 +289,9 @@ impl EpicSidebar {
             self_
                 .expand_button
                 .set_tooltip_text(Some("Collapse Sidebar"));
-            self_.expand_label.set_label("Collapse");
-            self_.marketplace_label.set_label("Marketplace");
         } else {
             self_.expand_image.set_icon_name(Some("go-next-symbolic"));
             self_.expand_button.set_tooltip_text(Some("Expand Sidebar"));
-            self_.marketplace_label.set_label("");
-            self_.expand_label.set_label("");
         };
         if let Err(e) = self_.settings.set_boolean("sidebar-expanded", new_value) {
             warn!("Unable to save sidebar state: {}", e);
@@ -323,10 +323,10 @@ impl EpicSidebar {
                     |cat| {
                         let filter = cat.filter().map(|filter| {
                             let mut prefix = String::new();
-                            if self_.downloaded_switch.is_active() {
+                            if self_.downloaded_filter.is_active() {
                                 prefix.push_str("downloaded&");
                             }
-                            if self_.favorites_switch.is_active() {
+                            if self_.favorites_filter.is_active() {
                                 prefix.push_str("favorites&");
                             }
                             format!("{prefix}{filter}")

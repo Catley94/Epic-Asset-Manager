@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <interface>
     <template class="EpicAssetDetails" parent="GtkBox">
+        <property name="halign">fill</property>
+        <property name="vexpand">true</property>
         <child>
             <object class="GtkSeparator"/>
         </child>
@@ -8,90 +10,104 @@
             <object class="GtkRevealer" id="detail_slider">
                 <property name="hexpand" bind-source="EpicAssetDetails" bind-property="expanded" bind-flags="sync-create"/>
                 <property name="reveal-child" bind-source="EpicAssetDetails" bind-property="expanded" bind-flags="sync-create"/>
-                <property name="transition-type">slide-left</property>
+                <property name="transition-type">none</property>
                 <child>
                     <object class="GtkBox">
                         <property name="orientation">vertical</property>
                         <child>
-                            <object class="GtkBox">
-                                <child>
-                                    <object class="GtkButton" id="favorite">
-                                        <property name="halign">start</property>
-                                        <property name="valign">start</property>
-                                        <property name="action-name">details.toggle_favorite</property>
-                                        <property name="icon-name">non-starred-symbolic</property>
-                                    </object>
-                                </child>
-                                <child>
-                                    <object class="GtkLabel" id="title">
-                                        <property name="ellipsize">middle</property>
-                                        <property name="halign">start</property>
-                                    </object>
-                                </child>
-                            </object>
-                        </child>
-                        <child>
+                            <!-- TODO: GtkInfoBar is deprecated, switch to AdwBanner -->
                             <object class="GtkInfoBar" id="warning">
+                                <property name="css-classes">warning</property>
                                 <property name="message-type">GTK_MESSAGE_ERROR</property>
                                 <property name="revealed">false</property>
                                 <child>
                                     <object class="GtkLabel" id="warning_message">
-
                                     </object>
                                 </child>
                             </object>
                         </child>
                         <child>
                             <object class="GtkBox">
+                                <property name="orientation">horizontal</property>
+                                <property name="margin-top">12</property>
+                                <property name="margin-bottom">12</property>
+                                <property name="margin-start">12</property>
+                                <property name="margin-end">12</property>
+                                <property name="spacing">6</property>
                                 <child>
                                     <object class="GtkButton">
                                         <property name="halign">start</property>
-                                        <property name="valign">start</property>
+                                        <property name="valign">center</property>
                                         <property name="action-name">details.close</property>
-                                        <property name="icon-name">go-next-symbolic</property>
+                                        <property name="css-classes">flat
+pill</property>
+                                        <property name="icon-name">process-stop-symbolic</property>
                                     </object>
                                 </child>
                                 <child>
-                                    <object class="GtkBox">
+                                    <object class="GtkLabel" id="title">
                                         <property name="hexpand">true</property>
+                                        <property name="halign">center</property>
+                                        <property name="ellipsize">middle</property>
+                                        <!-- <property name="selectable">true</property> --> <!-- setting this messes up titles for some reason -->
+                                        <property name="css-classes">title-1</property>
+                                    </object>
+                                </child>
+                                <child>
+                                    <object class="GtkButton" id="favorite">
                                         <property name="halign">end</property>
+                                        <property name="valign">center</property>
+                                        <property name="css-classes">flat
+circular</property>
+                                        <property name="action-name">details.toggle_favorite</property>
+                                        <property name="icon-name">non-starred-symbolic</property>
+                                    </object>
+                                </child>
+                            </object>
+                        </child>
+                        <child>
+                            <object class="GtkBox">
+                                <property name="hexpand">true</property>
+                                <property name="halign">fill</property>
+                                <property name="css-classes">linked</property>
+                                <property name="margin-bottom">12</property>
+                                <property name="margin-start">24</property>
+                                <property name="margin-end">24</property>
+                                <child>
+                                    <object class="GtkButton" id="information_button">
+                                        <property name="hexpand">true</property>
+                                        <property name="valign">center</property>
+                                        <property name="name">asset_details_button</property>
+                                        <property name="action-name">details.show_asset_details</property>
                                         <child>
-                                            <object class="GtkButton" id="information_button">
-                                                <property name="name">asset_details_button</property>
-                                                <property name="action-name">details.show_asset_details</property>
+                                            <object class="AdwButtonContent">
+                                                <property name="icon-name">dialog-information-symbolic</property>
+                                                <property name="label" translatable="yes">Details</property>
+                                            </object>
+                                        </child>
+                                    </object>
+                                </child>
+                                <child>
+                                    <!-- TODO: switch to GtkDropDown? -->
+                                    <object class="GtkMenuButton" id="actions_menu">
+                                        <property name="direction">down</property>
+                                        <property name="hexpand">true</property>
+                                        <property name="valign">center</property>
+                                        <child>
+                                          <object class="AdwButtonContent">
+                                              <property name="icon-name">view-more-symbolic</property>
+                                              <property name="label" translatable="yes">Actions</property>
+                                          </object>
+                                        </child>
+                                        <property name="popover">
+                                            <object class="GtkPopover">
                                                 <child>
-                                                    <object class="GtkBox">
-                                                        <property name="valign">center</property>
-                                                        <property name="halign">center</property>
-                                                        <child>
-                                                            <object class="GtkImage">
-                                                                <property name="icon-name">dialog-information-symbolic</property>
-                                                            </object>
-                                                        </child>
-                                                        <child>
-                                                            <object class="GtkLabel">
-                                                                <property name="label" translatable="yes">Details</property>
-                                                            </object>
-                                                        </child>
+                                                    <object class="GtkBox" id="actions_box">
+                                                        <property name="orientation">vertical</property>
                                                     </object>
                                                 </child>
                                             </object>
-                                        </child>
-                                        <child>
-                                            <object class="GtkMenuButton" id="actions_menu">
-                                                <property name="direction">down</property>
-                                                <property name="label" translatable="yes">Actions</property>
-                                                <property name="popover">
-                                                    <object class="GtkPopover">
-                                                        <child>
-                                                            <object class="GtkBox" id="actions_box">
-                                                                <property name="orientation">vertical</property>
-                                                            </object>
-                                                        </child>
-                                                    </object>
-                                                </property>
-                                            </object>
-                                        </child>
+                                        </property>
                                     </object>
                                 </child>
                             </object>
@@ -105,31 +121,24 @@
                             <object class="GtkRevealer" id="details_revealer">
                                 <property name="reveal-child">true</property>
                                 <child>
-                                    <object class="GtkScrolledWindow">
+                                    <object class="AdwPreferencesPage">
                                         <child>
-                                            <object class="GtkBox" id="details">
-                                                <property name="orientation">vertical</property>
+                                            <object class="AdwPreferencesGroup">
                                                 <child>
-                                                    <object class="AdwClamp">
+                                                    <object class="GtkBox" id="details">
                                                         <property name="orientation">vertical</property>
-                                                        <property name="maximum-size">510</property>
+                                                        <property name="spacing">12</property>
                                                         <child>
                                                             <object class="EpicImageOverlay" id="images">
                                                                 <property name="hexpand" bind-source="EpicAssetDetails" bind-property="expanded" bind-flags="sync-create"/>
-                                                                <property name="vexpand-set">True</property>
                                                             </object>
                                                         </child>
-                                                    </object>
-                                                </child>
-                                                <child>
-                                                    <object class="GtkSeparator">
-                                                        <property name="orientation">horizontal</property>
-                                                    </object>
-                                                </child>
-                                                <child>
-                                                    <object class="GtkListBox" id="details_box">
-                                                        <property name="selection-mode">GTK_SELECTION_NONE</property>
-                                                        <property name="vexpand">True</property>
+                                                        <child>
+                                                            <object class="GtkListBox" id="details_box">
+                                                                <property name="selection-mode">GTK_SELECTION_NONE</property>
+                                                                <property name="css-classes">boxed-list</property>
+                                                            </object>
+                                                        </child>
                                                     </object>
                                                 </child>
                                             </object>
@@ -141,7 +150,7 @@
                         <child>
                             <object class="GtkRevealer" id="actions_revealer">
                                 <property name="reveal-child">false</property>
-                                <property name="vexpand-set">True</property>
+                                <property name="vexpand">true</property>
                                 <property name="transition-type">slide-up</property>
                                 <child>
                                     <object class="EpicAssetActions" id="asset_actions">
