@@ -6,7 +6,6 @@ use gtk4::glib::clone;
 use gtk4::subclass::prelude::*;
 use gtk4::{self, gio, prelude::*};
 use gtk4::{glib, CompositeTemplate};
-use gtk4::Align::Center;
 use gtk_macros::{action, get_action};
 use log::{error, info};
 
@@ -197,10 +196,16 @@ impl EpicAssetDetails {
         self_.asset_actions.connect_local(
             "start-download",
             false,
-            clone!(@weak self as ead => @default-return None, move |_| {
-                ead.start_download();
-                None
-            }),
+            clone!(
+                #[weak(rename_to=ead)]
+                self,
+                #[upgrade_or]
+                None,
+                move |_| {
+                    ead.start_download();
+                    None
+                }
+            ),
         );
     }
 
@@ -209,10 +214,15 @@ impl EpicAssetDetails {
         get_action!(self_.actions, @show_download_confirmation).activate(None);
         glib::timeout_add_seconds_local(
             2,
-            clone!(@weak self as obj => @default-panic, move || {
-                obj.hide_confirmation();
-                glib::ControlFlow::Break
-            }),
+            clone!(
+                #[weak(rename_to=obj)]
+                self,
+                #[upgrade_or_panic]
+                move || {
+                    obj.hide_confirmation();
+                    glib::ControlFlow::Break
+                }
+            ),
         );
     }
 
@@ -229,72 +239,116 @@ impl EpicAssetDetails {
         action!(
             actions,
             "close",
-            clone!(@weak self as details => move |_, _| {
-                details.collapse();
-            })
+            clone!(
+                #[weak(rename_to=details)]
+                self,
+                move |_, _| {
+                    details.collapse();
+                }
+            )
         );
         action!(
             actions,
             "show_download_details",
-            clone!(@weak self as details => move |_, _| {
-                details.show_download_details(&crate::ui::widgets::logged_in::library::actions::Action::Download);
-            })
+            clone!(
+                #[weak(rename_to=details)]
+                self,
+                move |_, _| {
+                    details.show_download_details(
+                        &crate::ui::widgets::logged_in::library::actions::Action::Download,
+                    );
+                }
+            )
         );
 
         action!(
             actions,
             "create_project",
-            clone!(@weak self as details => move |_, _| {
-                details.show_download_details(&crate::ui::widgets::logged_in::library::actions::Action::CreateProject);
-            })
+            clone!(
+                #[weak(rename_to=details)]
+                self,
+                move |_, _| {
+                    details.show_download_details(
+                        &crate::ui::widgets::logged_in::library::actions::Action::CreateProject,
+                    );
+                }
+            )
         );
 
         action!(
             actions,
             "local_assets",
-            clone!(@weak self as details => move |_, _| {
-                details.show_download_details(&crate::ui::widgets::logged_in::library::actions::Action::Local);
-            })
+            clone!(
+                #[weak(rename_to=details)]
+                self,
+                move |_, _| {
+                    details.show_download_details(
+                        &crate::ui::widgets::logged_in::library::actions::Action::Local,
+                    );
+                }
+            )
         );
 
         action!(
             actions,
             "add_to_project",
-            clone!(@weak self as details => move |_, _| {
-                details.show_download_details(&crate::ui::widgets::logged_in::library::actions::Action::AddToProject);
-            })
+            clone!(
+                #[weak(rename_to=details)]
+                self,
+                move |_, _| {
+                    details.show_download_details(
+                        &crate::ui::widgets::logged_in::library::actions::Action::AddToProject,
+                    );
+                }
+            )
         );
 
         action!(
             actions,
             "show_download_confirmation",
-            clone!(@weak self as details => move |_, _| {
-                details.show_download_confirmation();
-            })
+            clone!(
+                #[weak(rename_to=details)]
+                self,
+                move |_, _| {
+                    details.show_download_confirmation();
+                }
+            )
         );
 
         action!(
             actions,
             "show_asset_details",
-            clone!(@weak self as details => move |_, _| {
-                details.show_asset_details();
-            })
+            clone!(
+                #[weak(rename_to=details)]
+                self,
+                move |_, _| {
+                    details.show_asset_details();
+                }
+            )
         );
 
         action!(
             actions,
             "toggle_favorite",
-            clone!(@weak self as details => move |_, _| {
-                details.toggle_favorites();
-            })
+            clone!(
+                #[weak(rename_to=details)]
+                self,
+                move |_, _| {
+                    details.toggle_favorites();
+                }
+            )
         );
 
-        self_.warning_message.connect_activate_link(
-            clone!(@weak self as details => @default-return glib::Propagation::Stop, move |_, uri| {
+        self_.warning_message.connect_activate_link(clone!(
+            #[weak(rename_to=details)]
+            self,
+            #[upgrade_or]
+            glib::Propagation::Stop,
+            move |_, uri| {
                 details.process_uri(uri);
                 glib::Propagation::Stop
-            }),
-        );
+            }
+        ));
     }
 
     fn process_uri(&self, uri: &str) {
@@ -381,7 +435,7 @@ impl EpicAssetDetails {
                         self_.warning.set_revealed(false);
                         self.create_actions_button(
                             "Add to Project",
-                            "edit-select-all-symbolic",
+                            "folder-new-symbolic",
                             "details.add_to_project",
                         );
                     }
@@ -389,12 +443,12 @@ impl EpicAssetDetails {
                         self_.warning.set_revealed(false);
                         self.create_actions_button(
                             "Add to Project",
-                            "edit-select-all-symbolic",
+                            "folder-new-symbolic",
                             "details.add_to_project",
                         );
                         self.create_actions_button(
                             "Create Project",
-                            "folder-new-symbolic",
+                            "list-add-symbolic",
                             "details.create_project",
                         );
                     }
@@ -419,6 +473,7 @@ impl EpicAssetDetails {
                         #[cfg(target_os = "linux")]
                         {
                             self_.warning.set_revealed(true);
+                            self_.warning_message.set_wrap(true);
                             self_.warning_message.set_markup("This is a Windows Build of the Engine. To install Linux version please use the <a href=\"engines\">Engines</a> tab.");
                         }
                     }
@@ -467,6 +522,7 @@ impl EpicAssetDetails {
             .child(&Self::build_box_with_icon_label(Some(label), icon))
             .action_name(action_name)
             .build();
+        button.set_css_classes(&["flat"]);
         self_.actions_box.append(&button);
     }
 
@@ -475,6 +531,7 @@ impl EpicAssetDetails {
 
         if !self.is_expanded() {
             self.set_property("expanded", true);
+            self.set_property("visible", true);
         }
 
         if let Some(a) = &*self_.asset.borrow() {
@@ -496,11 +553,9 @@ impl EpicAssetDetails {
         get_action!(self_.actions, @show_download_details).set_enabled(true);
         get_action!(self_.actions, @show_asset_details).set_enabled(false);
         info!("Showing details for {:?}", asset.title);
-        // if let Some(title) = &asset.title {
-        //     self_
-        //         .title
-        //         .set_markup(&format!("<b><big>{title}</big></b>"));
-        // }
+        if let Some(title) = &asset.title {
+            self_.title.set_label(title);
+        }
 
         self_.images.clear();
 
@@ -516,28 +571,9 @@ impl EpicAssetDetails {
         while let Some(el) = self_.details_box.first_child() {
             self_.details_box.remove(&el);
         }
-
-        if let Some(title) = &asset.title {
-            //TODO: Set dynamic font size based on character length, 50 is ideal, any chracters plus 10, should be 30
-            let mut font_size = 40;
-
-            if (title.len() > 30) {
-                font_size = 30;
-            }
-            let label = gtk4::Label::builder()
-                .label(title)
-                .wrap(true)
-                .use_markup(true)
-                .label(&format!("<span font_desc=\"{font_size}\"><b>{}</b></span>", title))
-                .valign(gtk4::Align::Center)
-                .halign(gtk4::Align::Center)
-                .hexpand(true)
-                .build();
-            self.add_info_row("", &label);
-        }
-
         if let Some(dev_name) = &asset.developer {
-            self.add_info_row("Developer:", &gtk4::Label::new(Some(dev_name)));
+            let text = format!("Developer: {dev_name}");
+            self.add_info_row(&text);
         }
 
         if let Some(categories) = &asset.categories {
@@ -556,48 +592,52 @@ impl EpicAssetDetails {
                     cats.push(category.path.clone());
                 }
             }
-            self.add_info_row("Categories:", &gtk4::Label::new(Some(&cats.join(", "))));
+            let cats = &cats.join(", ");
+            let text = format!("Categories: {cats}");
+            self.add_info_row(&text);
         }
 
         if let Some(platforms) = &asset.platforms() {
-            self.add_info_row("Platforms:", &gtk4::Label::new(Some(&platforms.join(", "))));
+            let platforms = &platforms.join(", ");
+            let text = format!("Platforms: {platforms}");
+            self.add_info_row(&text);
         }
 
         if let Some(updated) = &asset.last_modified_date {
-            self.add_info_row("Updated:", &gtk4::Label::new(Some(&updated.to_rfc3339())));
+            let updated = updated.to_rfc3339();
+            let text = format!("Updated: {updated}");
+            self.add_info_row(&text);
         }
 
         if let Some(compatible_apps) = &asset.compatible_apps() {
-            self.add_info_row(
-                "Compatible with:",
-                &gtk4::Label::new(Some(&compatible_apps.join(", ").replace("UE_", ""))),
-            );
+            if !compatible_apps.is_empty() {
+                let compat = &compatible_apps.join(", ").replace("UE_", "");
+                let text = format!("Compatible with: {compat}");
+                self.add_info_row(&text);
+            }
         }
 
         if let Some(desc) = &asset.long_description {
-            let label = gtk4::Label::builder().wrap(true).xalign(0.0).build();
-            label.set_markup(&html2pango::matrix_html_to_markup(desc).replace("\n\n", "\n"));
-            self.add_info_row("", &label);
+            let text = &html2pango::matrix_html_to_markup(desc).replace("\n\n", "\n");
+            self.add_info_row(text);
         }
 
         if let Some(desc) = &asset.technical_details {
-            let label = gtk4::Label::builder().wrap(true).xalign(0.0).build();
-            label.set_markup(&html2pango::matrix_html_to_markup(desc).replace("\n\n", "\n"));
-            self.add_info_row("", &label);
+            let text = &html2pango::matrix_html_to_markup(desc).replace("\n\n", "\n");
+            self.add_info_row(text);
         }
-
         self.check_favorite();
     }
 
-    fn add_info_row(&self, title: &str, widget: &impl IsA<gtk4::Widget>) {
-        let self_ = self.imp();
-        self_
-            .details_box
-            .append(&crate::window::EpicAssetManagerWindow::create_details_row(
-                title,
-                widget,
-                &self_.details_group,
-            ));
+    fn add_info_row(&self, text: &str) {
+        if !&text.is_empty() {
+            let self_ = self.imp();
+            self_
+                .details_box
+                .append(&crate::window::EpicAssetManagerWindow::create_info_row(
+                    text,
+                ));
+        }
     }
 
     pub fn is_expanded(&self) -> bool {
@@ -683,6 +723,7 @@ impl EpicAssetDetails {
     pub fn collapse(&self) {
         let self_ = self.imp();
         self.set_property("expanded", false);
+        self.set_property("visible", false);
         if let Some(w) = self_.window.get() {
             let w_ = w.imp();
             let l = w_.logged_in_stack.clone();

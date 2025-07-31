@@ -45,8 +45,6 @@ pub mod imp {
         #[template_child]
         pub asset_search: TemplateChild<gtk4::SearchEntry>,
         #[template_child]
-        pub search_toggle: TemplateChild<gtk4::ToggleButton>,
-        #[template_child]
         pub select_order_by: TemplateChild<gtk4::ComboBoxText>,
         #[template_child]
         pub order: TemplateChild<gtk4::Button>,
@@ -89,7 +87,6 @@ pub mod imp {
                 sidebar: TemplateChild::default(),
                 asset_grid: TemplateChild::default(),
                 asset_search: TemplateChild::default(),
-                search_toggle: TemplateChild::default(),
                 select_order_by: TemplateChild::default(),
                 order: TemplateChild::default(),
                 count_label: TemplateChild::default(),
@@ -294,18 +291,27 @@ impl EpicLibraryBox {
         self_.asset_grid.set_model(Some(&selection_model));
         self_.asset_grid.set_factory(Some(&factory));
 
-        selection_model.connect_selected_notify(clone!(@weak self as library => move |model| {
-            library.asset_selected(model);
-        }));
+        selection_model.connect_selected_notify(clone!(
+            #[weak(rename_to=library)]
+            self,
+            move |model| {
+                library.asset_selected(model);
+            }
+        ));
 
         self.fetch_assets();
         glib::timeout_add_seconds_local(
             15 * 60 + (rand::random::<u32>() % 15 * 60),
-            clone!(@weak self as obj => @default-panic, move || {
-                debug!("Library timed refresh starting");
-                obj.run_refresh();
-                glib::ControlFlow::Continue
-            }),
+            clone!(
+                #[weak(rename_to=obj)]
+                self,
+                #[upgrade_or_panic]
+                move || {
+                    debug!("Library timed refresh starting");
+                    obj.run_refresh();
+                    glib::ControlFlow::Continue
+                }
+            ),
         );
     }
 
@@ -488,18 +494,21 @@ impl EpicLibraryBox {
 
         self_.sidebar.set_logged_in(self);
 
-        self_
-            .select_order_by
-            .connect_changed(clone!(@weak self as library => move |_| {
+        self_.select_order_by.connect_changed(clone!(
+            #[weak(rename_to=library)]
+            self,
+            move |_| {
                 library.order_changed();
-            }));
+            }
+        ));
 
-        self_
-            .asset_search
-            .connect_search_changed(clone!(@weak self as library => move |_| {
-                let self_ = library.imp();
-                self_.search_toggle.set_active(true);
-            }));
+        self_.asset_search.connect_search_changed(clone!(
+            #[weak(rename_to=library)]
+            self,
+            move |_| {
+                let _ = library.imp();
+            }
+        ));
     }
 
     pub fn order_changed(&self) {
@@ -518,18 +527,25 @@ impl EpicLibraryBox {
         action!(
             self_.actions,
             "show_download_details",
-            clone!(@weak self as library => move |_, _| {
-                library.show_download_details();
-
-            })
+            clone!(
+                #[weak(rename_to=library)]
+                self,
+                move |_, _| {
+                    library.show_download_details();
+                }
+            )
         );
 
         action!(
             self_.actions,
             "order",
-            clone!(@weak self as library => move |_, _| {
-                library.order();
-            })
+            clone!(
+                #[weak(rename_to=library)]
+                self,
+                move |_, _| {
+                    library.order();
+                }
+            )
         );
 
         self.insert_action_group("library", Some(&self_.actions));
@@ -622,7 +638,7 @@ impl EpicLibraryBox {
             let win_ = window.imp();
             let sender = win_.model.borrow().sender.clone();
             sender
-                .send(crate::ui::messages::Msg::EndAssetProcessing)
+                .send_blocking(crate::ui::messages::Msg::EndAssetProcessing)
                 .unwrap();
             let mut assets = self_.loaded_assets.borrow_mut();
             let mut asset_products = self_.asset_product_names.borrow_mut();
@@ -697,7 +713,7 @@ impl EpicLibraryBox {
             match asset.thumbnail() {
                 None => {
                     sender
-                        .send(crate::ui::messages::Msg::ProcessAssetThumbnail(
+                        .send_blocking(crate::ui::messages::Msg::ProcessAssetThumbnail(
                             asset.clone(),
                             None,
                         ))
@@ -721,7 +737,7 @@ impl EpicLibraryBox {
                                 cache_path.as_path(),
                             )) {
                                 Ok(t) => sender
-                                    .send(crate::ui::messages::Msg::ProcessAssetThumbnail(
+                                    .send_blocking(crate::ui::messages::Msg::ProcessAssetThumbnail(
                                         asset.clone(),
                                         Some(t),
                                     ))
@@ -735,7 +751,10 @@ impl EpicLibraryBox {
                             };
                         } else {
                             sender
-                                .send(crate::ui::messages::Msg::DownloadImage(t, asset.clone()))
+                                .send_blocking(crate::ui::messages::Msg::DownloadImage(
+                                    t,
+                                    asset.clone(),
+                                ))
                                 .unwrap();
                         }
                     });
@@ -782,12 +801,14 @@ impl EpicLibraryBox {
 
                             if asset_file.exists() {
                                 sender
-                                    .send(crate::ui::messages::Msg::StartAssetProcessing)
+                                    .send_blocking(crate::ui::messages::Msg::StartAssetProcessing)
                                     .unwrap();
                                 if let Ok(f) = std::fs::File::open(asset_file.as_path()) {
                                     if let Ok(asset) = serde_json::from_reader(f) {
                                         sender
-                                            .send(crate::ui::messages::Msg::ProcessAssetInfo(asset))
+                                            .send_blocking(
+                                                crate::ui::messages::Msg::ProcessAssetInfo(asset),
+                                            )
                                             .unwrap();
                                     }
                                 };
@@ -825,21 +846,26 @@ impl EpicLibraryBox {
                 });
                 for asset in assets {
                     sender
-                        .send(crate::ui::messages::Msg::StartAssetProcessing)
+                        .send_blocking(crate::ui::messages::Msg::StartAssetProcessing)
                         .unwrap();
                     sender
-                        .send(crate::ui::messages::Msg::ProcessEpicAsset(asset))
+                        .send_blocking(crate::ui::messages::Msg::ProcessEpicAsset(asset))
                         .unwrap();
                 }
             });
             self.refresh_state_changed();
-            glib::idle_add_local(clone!(@weak self as library => @default-panic, move || {
-                if library.flush_loop() {
-                    glib::ControlFlow::Continue
-                } else {
-                    glib::ControlFlow::Break
+            glib::idle_add_local(clone!(
+                #[weak(rename_to=library)]
+                self,
+                #[upgrade_or_panic]
+                move || {
+                    if library.flush_loop() {
+                        glib::ControlFlow::Continue
+                    } else {
+                        glib::ControlFlow::Break
+                    }
                 }
-            }));
+            ));
         }
     }
 
@@ -895,7 +921,7 @@ impl EpicLibraryBox {
                             .unwrap();
                     }
                     sender
-                        .send(crate::ui::messages::Msg::ProcessAssetInfo(asset))
+                        .send_blocking(crate::ui::messages::Msg::ProcessAssetInfo(asset))
                         .unwrap();
                 }
             });

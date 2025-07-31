@@ -135,17 +135,6 @@ pub mod imp {
             let button = self.color_scheme_btn.get();
             let style_manager = adw::StyleManager::default();
 
-            if !style_manager.system_supports_color_schemes() {
-                style_manager.connect_color_scheme_notify(move |style_manager| {
-                    button.set_visible(true);
-                    if style_manager.is_dark() {
-                        button.set_icon_name("light-mode-symbolic");
-                    } else {
-                        button.set_icon_name("dark-mode-symbolic");
-                    }
-                });
-            }
-
             // load latest window state
             obj.load_window_size();
             obj.setup_actions();
@@ -235,21 +224,24 @@ impl EpicAssetManagerWindow {
 
     pub fn setup_receiver(&self) {
         let self_ = self.imp();
-        self_
+        let receiver = self_
             .model
             .borrow()
             .deref()
             .receiver
             .borrow_mut()
             .take()
-            .unwrap()
-            .attach(
-                None,
-                clone!(@weak self as window => @default-panic, move |msg| {
+            .unwrap();
+        glib::spawn_future_local(clone!(
+            #[weak(rename_to=window)]
+            self,
+            #[upgrade_or_panic]
+            async move {
+                while let Ok(msg) = receiver.recv().await {
                     window.update(msg);
-                    glib::ControlFlow::Continue
-                }),
-            );
+                }
+            }
+        ));
     }
 
     pub fn setup_actions(&self) {
@@ -258,13 +250,17 @@ impl EpicAssetManagerWindow {
             self,
             "login",
             Some(&String::static_variant_type()),
-            clone!(@weak self as window => move |_, sid_par| {
-                if let Some(sid_opt) = sid_par {
-                    if let Some(sid) = sid_opt.get::<String>() {
-                        window.login(sid);
+            clone!(
+                #[weak(rename_to=window)]
+                self,
+                move |_, sid_par| {
+                    if let Some(sid_opt) = sid_par {
+                        if let Some(sid) = sid_opt.get::<String>() {
+                            window.login(sid);
+                        }
                     }
                 }
-            })
+            )
         );
 
         self.insert_action_group("window", Some(self));
@@ -272,26 +268,43 @@ impl EpicAssetManagerWindow {
         action!(
             self,
             "logout",
-            clone!(@weak self as window => move |_,_| {
-                window.logout();
-            })
+            clone!(
+                #[weak(rename_to=window)]
+                self,
+                move |_, _| {
+                    window.logout();
+                }
+            )
         );
 
         action!(
             self,
             "refresh",
-            clone!(@weak self as window => move |_,_| {
-                window.refresh();
-            })
+            clone!(
+                #[weak(rename_to=window)]
+                self,
+                move |_, _| {
+                    window.refresh();
+                }
+            )
         );
 
         self_.download_manager.connect_local(
             "tick",
             false,
-            clone!(@weak self as window => @default-return None, move |_| {
-                let self_ = window.imp();
-                self_.progress_icon.set_fraction(self_.download_manager.progress());
-                None}),
+            clone!(
+                #[weak(rename_to=window)]
+                self,
+                #[upgrade_or]
+                None,
+                move |_| {
+                    let self_ = window.imp();
+                    self_
+                        .progress_icon
+                        .set_fraction(self_.download_manager.progress());
+                    None
+                }
+            ),
         );
     }
 
@@ -362,24 +375,27 @@ impl EpicAssetManagerWindow {
         }
     }
 
+    // TODO: Switch to adw::Toast or adw::Banner
     pub fn add_notification(&self, name: &str, message: &str, message_type: gtk4::MessageType) {
         let self_ = self.imp();
         self.clear_notification(name);
         let notif = gtk4::InfoBar::builder()
             .message_type(message_type)
             .name(name)
-            .margin_start(10)
-            .margin_end(10)
             .show_close_button(true)
             .build();
         let label = gtk4::Label::builder().label(message).build();
         notif.add_child(&label);
-        notif.connect_response(
-            clone!(@weak notif, @weak self as window => @default-panic, move |_, _| {
+        notif.connect_response(clone!(
+            #[weak]
+            notif,
+            #[weak(rename_to=window)]
+            self,
+            move |_, _| {
                 let self_ = window.imp();
                 self_.notifications.remove(&notif);
-            }),
-        );
+            }
+        ));
         self_.notifications.append(&notif);
     }
 
@@ -459,23 +475,37 @@ impl EpicAssetManagerWindow {
             .set_download_manager(&self_.download_manager);
     }
 
-    pub fn create_details_row(
-        label: &str,
-        widget: &impl IsA<gtk4::Widget>,
-        size_group: &gtk4::SizeGroup,
-    ) -> ListBoxRow {
-        let b = gtk4::Box::new(gtk4::Orientation::Horizontal, 5);
-        b.set_margin_start(5);
-        b.set_margin_end(5);
-        b.set_margin_bottom(5);
-        b.set_margin_top(5);
-        let label = gtk4::Label::new(Some(label));
-        label.set_xalign(1.0);
-        label.set_valign(gtk4::Align::Center);
-        size_group.add_widget(&label);
+    pub fn create_info_row(text: &str) -> ListBoxRow {
+        let b = gtk4::Box::new(gtk4::Orientation::Horizontal, 12);
+        b.set_margin_start(12);
+        b.set_margin_end(12);
+        b.set_margin_top(8);
+        b.set_margin_bottom(8);
+        let label = gtk4::Label::new(Some(&text));
+        label.set_use_markup(true);
+        label.set_selectable(true);
+        label.set_wrap(true);
         b.append(&label);
+        let row = gtk4::ListBoxRow::builder().activatable(false).child(&b);
+        row.build()
+    }
+
+    pub fn create_widget_row(label: &str, widget: &impl IsA<gtk4::Widget>) -> ListBoxRow {
+        let b = gtk4::Box::new(gtk4::Orientation::Horizontal, 12);
+        b.set_margin_start(12);
+        b.set_margin_end(12);
+        b.set_margin_top(8);
+        b.set_margin_bottom(8);
+        let label = gtk4::Label::new(Some(label));
+        label.set_hexpand(true);
+        label.set_halign(gtk4::Align::Start);
+        label.set_valign(gtk4::Align::Center);
+        label.set_selectable(true);
+        label.set_ellipsize(gtk4::pango::EllipsizeMode::End);
+        b.append(&label);
+        widget.set_halign(gtk4::Align::End);
         b.append(widget);
-        let row = gtk4::ListBoxRow::builder().child(&b);
+        let row = gtk4::ListBoxRow::builder().activatable(false).child(&b);
         row.build()
     }
 

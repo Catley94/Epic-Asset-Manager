@@ -11,39 +11,45 @@
                           bind-flags="sync-create"/>
                 <property name="reveal-child" bind-source="EpicEnginesSide" bind-property="expanded"
                           bind-flags="sync-create"/>
-                <property name="transition-type">slide-left</property>
+                <property name="transition-type">none</property>
                 <child>
                     <object class="GtkBox">
                         <property name="orientation">vertical</property>
+                        <property name="css-classes">background</property>
                         <child>
                             <object class="GtkBox">
+                                <property name="margin-top">12</property>
+                                <property name="margin-bottom">12</property>
+                                <property name="margin-start">12</property>
+                                <property name="margin-end">92</property>
+                                <property name="spacing">12</property>
                                 <child>
                                     <object class="GtkButton">
                                         <property name="halign">start</property>
-                                        <property name="valign">start</property>
+                                        <property name="valign">center</property>
                                         <property name="action-name">engines_side.close</property>
-                                        <property name="icon-name">go-next-symbolic</property>
+                                        <property name="icon-name">process-stop-symbolic</property>
+                                        <property name="css-classes">flat
+pill</property>
                                     </object>
                                 </child>
                                 <child>
-                                    <object class="GtkBox">
-                                        <child>
-                                            <object class="GtkLabel" id="title">
-                                                <property name="label" bind-source="EpicEnginesSide"
-                                                          bind-property="title"
-                                                          bind-flags="sync-create"/>
-                                                <property name="ellipsize">middle</property>
-                                                <property name="halign">start</property>
-                                                <property name="use-markup">true</property>
-                                            </object>
-                                        </child>
+                                    <object class="GtkLabel" id="title">
+                                        <property name="hexpand">true</property>
+                                        <property name="halign">center</property>
+                                        <property name="label" bind-source="EpicEnginesSide"
+                                                  bind-property="title"
+                                                  bind-flags="sync-create"/>
+                                        <property name="ellipsize">end</property>
+                                        <property name="css-classes">asset-title</property>
+                                        <property name="selectable">true</property>
                                     </object>
                                 </child>
                             </object>
                         </child>
                         <child>
                             <object class="GtkStack" id="stack">
-                                <property name="transition-type">crossfade</property>
+                                <property name="transition-type">none</property>
                                 <child>
                                     <object class="GtkStackPage">
                                         <property name="name">details</property>

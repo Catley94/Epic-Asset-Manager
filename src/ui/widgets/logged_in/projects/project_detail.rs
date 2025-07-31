@@ -161,17 +161,25 @@ impl UnrealProjectDetails {
         action!(
             actions,
             "close",
-            clone!(@weak self as details => move |_, _| {
-                details.collapse();
-            })
+            clone!(
+                #[weak(rename_to=details)]
+                self,
+                move |_, _| {
+                    details.collapse();
+                }
+            )
         );
 
         action!(
             actions,
             "launch_project",
-            clone!(@weak self as details => move |_, _| {
-                details.launch_engine();
-            })
+            clone!(
+                #[weak(rename_to=details)]
+                self,
+                move |_, _| {
+                    details.launch_engine();
+                }
+            )
         );
     }
 
@@ -228,10 +236,15 @@ impl UnrealProjectDetails {
         self_.confirmation_revealer.set_vexpand_set(true);
         glib::timeout_add_seconds_local(
             2,
-            clone!(@weak self as obj => @default-panic, move || {
-                obj.show_details();
-                glib::ControlFlow::Break
-            }),
+            clone!(
+                #[weak(rename_to=obj)]
+                self,
+                #[upgrade_or_panic]
+                move || {
+                    obj.show_details();
+                    glib::ControlFlow::Break
+                }
+            ),
         );
     }
 
@@ -263,6 +276,7 @@ impl UnrealProjectDetails {
         let self_ = self.imp();
         self.show_details();
         self.set_property("path", &path);
+        self.set_visible(true);
         if !self.is_expanded() {
             self.set_property("expanded", true);
         }
@@ -276,8 +290,8 @@ impl UnrealProjectDetails {
         self_.logs.clear();
 
         let pathbuf = PathBuf::from(path.unwrap());
-        self_.title.set_markup(&format!(
-            "<b><u><big>{}</big></u></b>",
+        self_.title.set_label(&format!(
+            "{}",
             pathbuf.file_stem().unwrap().to_str().unwrap()
         ));
 
@@ -305,9 +319,13 @@ impl UnrealProjectDetails {
 
         self.populate_engines(&combo, &associated, &mut last_engine);
 
-        combo.connect_changed(clone!(@weak self as detail => move |c| {
-            detail.engine_selected(c);
-        }));
+        combo.connect_changed(clone!(
+            #[weak(rename_to=detail)]
+            self,
+            move |c| {
+                detail.engine_selected(c);
+            }
+        ));
         if let Some(engine) = associated {
             combo.set_active_id(Some(&engine.path));
         } else if let Some(last) = last_engine {
@@ -317,38 +335,34 @@ impl UnrealProjectDetails {
 
         self_
             .details
-            .append(&crate::window::EpicAssetManagerWindow::create_details_row(
-                "Engine",
-                &combo,
-                &self_.details_group,
-            ));
-
-        // Path
-        let path_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
-        let label = gtk4::Label::new(Some(parent.to_str().unwrap()));
-        label.set_xalign(0.0);
-        label.set_hexpand(true);
-        path_box.append(&label);
-        let button = gtk4::Button::with_icon_and_label("system-file-manager-symbolic", "Open");
-        button.connect_clicked(clone!(@weak self as project => move |_| {
-            project.open_dir();
-        }));
-        path_box.append(&button);
-        self_
-            .details
-            .append(&crate::window::EpicAssetManagerWindow::create_details_row(
-                "Path",
-                &path_box,
-                &self_.details_group,
+            .append(&crate::window::EpicAssetManagerWindow::create_widget_row(
+                "Engine:", &combo,
             ));
 
         // Engine Association
+        let text = &project.engine_association;
+        let text = format!("Engine Association: {text}");
         self_
             .details
-            .append(&crate::window::EpicAssetManagerWindow::create_details_row(
-                "Engine Association",
-                &gtk4::Label::new(Some(&project.engine_association)),
-                &self_.details_group,
+            .append(&crate::window::EpicAssetManagerWindow::create_info_row(
+                &text,
+            ));
+
+        // Path
+        let text = parent.to_str().unwrap();
+        let text = format!("Path: {text}");
+        let button = gtk4::Button::with_icon_and_label("folder-open-symbolic", "Open");
+        button.connect_clicked(clone!(
+            #[weak(rename_to=project)]
+            self,
+            move |_| {
+                project.open_dir();
+            }
+        ));
+        self_
+            .details
+            .append(&crate::window::EpicAssetManagerWindow::create_widget_row(
+                &text, &button,
             ));
     }
 
@@ -456,6 +470,7 @@ impl UnrealProjectDetails {
     pub fn collapse(&self) {
         let self_ = self.imp();
         self.set_property("expanded", false);
+        self.set_property("visible", false);
         if let Some(w) = self_.window.get() {
             let w_ = w.imp();
             let l = w_.logged_in_stack.clone();

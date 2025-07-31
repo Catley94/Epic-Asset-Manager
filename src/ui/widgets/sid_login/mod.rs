@@ -1,7 +1,7 @@
 use glib::clone;
 use gtk4::subclass::prelude::*;
 use gtk4::{self, gio, prelude::*};
-use gtk4::{glib, CompositeTemplate};
+use gtk4::{gdk, glib, CompositeTemplate};
 use gtk_macros::{action, get_action};
 use log::error;
 
@@ -74,9 +74,11 @@ impl SidBox {
 
     pub fn setup_events(&self) {
         let self_ = self.imp();
-        self_
-            .sid_entry
-            .connect_changed(clone!(@weak self as sid_box => move |_| sid_box.validate_sid()));
+        self_.sid_entry.connect_changed(clone!(
+            #[weak(rename_to=sid_box)]
+            self,
+            move |_| sid_box.validate_sid()
+        ));
     }
 
     fn validate_sid(&self) {
@@ -108,9 +110,25 @@ impl SidBox {
         action!(
             actions,
             "login",
-            clone!(@weak self as sid_box => move |_, _| {
-                sid_box.login();
-            })
+            clone!(
+                #[weak(rename_to=sid_box)]
+                self,
+                move |_, _| {
+                    sid_box.login();
+                }
+            )
+        );
+
+        action!(
+            actions,
+            "copy",
+            clone!(
+                #[weak(rename_to=sid_box)]
+                self,
+                move |_, _| {
+                    sid_box.copy();
+                }
+            )
         );
 
         get_action!(self_.actions, @login).set_enabled(false);
@@ -127,5 +145,10 @@ impl SidBox {
             );
         }
         self_.sid_entry.set_text("");
+    }
+
+    fn copy(&self) {
+        let clipboard = gdk::Display::default().unwrap().clipboard();
+        clipboard.set_text("https://www.epicgames.com/id/login?redirectUrl=https%3A%2F%2Fwww.epicgames.com%2Fid%2Fapi%2Fredirect%3FclientId%3D34a02cf8f4414e29b15921876da36f9a%26responseType%3Dcode");
     }
 }

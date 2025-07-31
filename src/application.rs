@@ -1,9 +1,9 @@
 use crate::config;
 use crate::window::EpicAssetManagerWindow;
+use adw::subclass::prelude::*;
 use gio::ApplicationFlags;
 use glib::clone;
 use gtk4::prelude::*;
-use gtk4::subclass::prelude::*;
 use gtk4::{gdk, gio, glib};
 use gtk_macros::action;
 use log::{debug, error, info};
@@ -135,9 +135,13 @@ pub mod imp {
             action!(
                 app_d,
                 "preferences",
-                clone!(@weak app as app => move |_,_| {
-                    app.main_window().show_preferences();
-                })
+                clone!(
+                    #[weak]
+                    app,
+                    move |_, _| {
+                        app.main_window().show_preferences();
+                    }
+                )
             );
 
             app.setup_gactions();
@@ -146,11 +150,12 @@ pub mod imp {
     }
 
     impl GtkApplicationImpl for EpicAssetManager {}
+    impl AdwApplicationImpl for EpicAssetManager {}
 }
 
 glib::wrapper! {
     pub struct EpicAssetManager(ObjectSubclass<imp::EpicAssetManager>)
-        @extends gio::Application, gtk4::Application, @implements gio::ActionMap, gio::ActionGroup;
+        @extends gio::Application, gtk4::Application, @implements gio::ActionMap, gio::ActionGroup, adw::Application;
 }
 
 impl Default for EpicAssetManager {
@@ -188,27 +193,40 @@ impl EpicAssetManager {
         action!(
             self,
             "quit",
-            clone!(@weak self as app => move |_, _| {
-                app.exit();
-            })
+            clone!(
+                #[weak(rename_to=app)]
+                self,
+                move |_, _| {
+                    app.exit();
+                }
+            )
         );
-
-        let is_dark_mode = self_.settings.boolean("dark-mode");
-        let simple_action =
-            gio::SimpleAction::new_stateful("dark-mode", None, &is_dark_mode.to_variant());
-        simple_action.connect_activate(clone!(@weak self as app =>  move |action, _| {
-            app.toggle_dark_mode(action);
-        }));
-        self.add_action(&simple_action);
 
         // About
         action!(
             self,
             "about",
-            clone!(@weak self as app => move |_, _| {
-                app.show_about_dialog();
-            })
+            clone!(
+                #[weak(rename_to=app)]
+                self,
+                move |_, _| {
+                    app.show_about_dialog();
+                }
+            )
         );
+
+        // Dark mode
+        let is_dark_mode = self_.settings.boolean("dark-mode");
+        let simple_action =
+            gio::SimpleAction::new_stateful("dark-mode", None, &is_dark_mode.to_variant());
+        simple_action.connect_activate(clone!(
+            #[weak(rename_to=app)]
+            self,
+            move |action, _| {
+                app.toggle_dark_mode(action);
+            }
+        ));
+        self.add_action(&simple_action);
 
         let level = self_.settings.int("log-level");
         crate::ui::widgets::preferences::PreferencesWindow::set_log_level(level);
@@ -217,10 +235,15 @@ impl EpicAssetManager {
     // Sets up keyboard shortcuts
     pub fn setup_accels(&self) {
         self.set_accels_for_action("app.quit", &["<primary>q"]);
-        self.set_accels_for_action("win.show-help-overlay", &["<primary>question"]);
     }
 
     fn toggle_dark_mode(&self, action: &gtk4::gio::SimpleAction) {
+        let style_manager = adw::StyleManager::default();
+        if style_manager.is_dark() {
+            style_manager.set_color_scheme(adw::ColorScheme::ForceLight);
+        } else {
+            style_manager.set_color_scheme(adw::ColorScheme::ForceDark);
+        }
         let self_ = self.imp();
         let state = action.state().unwrap();
         let action_state: bool = state.get().unwrap();
@@ -251,6 +274,7 @@ impl EpicAssetManager {
         }
     }
 
+    // TODO: Switch to adw:AboutDialog
     fn show_about_dialog(&self) {
         let dialog = gtk4::AboutDialog::builder()
             .program_name("Epic Asset Manager")

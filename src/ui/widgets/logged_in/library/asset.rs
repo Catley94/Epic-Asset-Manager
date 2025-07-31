@@ -18,7 +18,8 @@ pub mod imp {
         downloaded: RefCell<bool>,
         thumbnail: RefCell<Option<Texture>>,
         #[template_child]
-        pub image: TemplateChild<gtk4::Image>,
+        pub image: TemplateChild<adw::Avatar>,
+        // pub image: TemplateChild<gtk4::Image>,
         pub data: RefCell<Option<crate::models::asset_data::AssetData>>,
         pub handler: RefCell<Option<SignalHandlerId>>,
     }
@@ -109,7 +110,8 @@ pub mod imp {
                             self.image.set_icon_name(Some("ue-logo-symbolic"));
                         },
                         |t| {
-                            self.image.set_from_paintable(Some(&t));
+                            self.image.set_custom_image(Some(&t));
+                            // self.image.set_paintable(Some(&t));
                         },
                     );
                 }
@@ -164,11 +166,19 @@ impl EpicAsset {
         self_.handler.replace(Some(data.connect_local(
             "refreshed",
             false,
-            clone!(@weak self as asset, @weak data => @default-return None, move |_| {
-                asset.set_property("favorite", data.favorite());
-                asset.set_property("downloaded", data.downloaded());
-                None
-            }),
+            clone!(
+                #[weak(rename_to=asset)]
+                self,
+                #[weak]
+                data,
+                #[upgrade_or]
+                None,
+                move |_| {
+                    asset.set_property("favorite", data.favorite());
+                    asset.set_property("downloaded", data.downloaded());
+                    None
+                }
+            ),
         )));
     }
 }

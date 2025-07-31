@@ -79,7 +79,7 @@ pub mod imp {
                     let label = value
                         .get::<Option<String>>()
                         .expect("type conformity checked by `Object::set_property`");
-                    let formatted = label.as_ref().map(|l| format!("<b><u>{l}</u></b>"));
+                    let formatted = label.as_ref().map(|l| format!("{l}"));
                     self.label.replace(formatted);
                 }
                 "path" => {
@@ -132,17 +132,25 @@ impl EpicLogLine {
         action!(
             self_.actions,
             "open",
-            clone!(@weak self as local_asset => move |_, _| {
-                local_asset.open_file();
-            })
+            clone!(
+                #[weak(rename_to=local_asset)]
+                self,
+                move |_, _| {
+                    local_asset.open_file();
+                }
+            )
         );
 
         action!(
             self_.actions,
             "dir",
-            clone!(@weak self as local_asset => move |_, _| {
-                local_asset.open_path();
-            })
+            clone!(
+                #[weak(rename_to=local_asset)]
+                self,
+                move |_, _| {
+                    local_asset.open_path();
+                }
+            )
         );
     }
 
@@ -170,10 +178,12 @@ impl EpicLogLine {
             {
                 if let Ok(dir) = std::fs::File::open(&p) {
                     let ctx = glib::MainContext::default();
-                    ctx.spawn_local(clone!(@weak self as asset_details => async move {
-                        ashpd::desktop::open_uri::OpenFileRequest::default().send_file(&dir)
-                        .await.unwrap();
-                    }));
+                    ctx.spawn_local(async move {
+                        ashpd::desktop::open_uri::OpenFileRequest::default()
+                            .send_file(&dir)
+                            .await
+                            .unwrap();
+                    });
                 };
             };
         }

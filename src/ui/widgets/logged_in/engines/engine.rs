@@ -21,7 +21,7 @@ pub mod imp {
         pub data: RefCell<Option<crate::models::engine_data::EngineData>>,
         pub handler: RefCell<Option<SignalHandlerId>>,
         #[template_child]
-        pub logo: TemplateChild<gtk4::Image>,
+        pub logo: TemplateChild<adw::Avatar>,
         #[template_child]
         pub add: TemplateChild<adw::Avatar>,
     }
@@ -89,7 +89,7 @@ pub mod imp {
                     let version = value
                         .get::<Option<String>>()
                         .expect("type conformity checked by `Object::set_property`")
-                        .map(|l| format!("<span size=\"xx-large\"><b><u>{l}</u></b></span>"));
+                        .map(|l| format!("{l}"));
                     self.version.replace(version);
                 }
                 "path" => {
@@ -100,7 +100,7 @@ pub mod imp {
                     let branch = value
                         .get::<Option<String>>()
                         .expect("type conformity checked by `Object::set_property`")
-                        .map(|l| format!("<i><b>Branch:</b> {l}</i>"));
+                        .map(|l| format!("Branch: {l}"));
                     self.branch.replace(branch);
                 }
                 "has-branch" => {
@@ -197,10 +197,18 @@ impl EpicEngine {
         self_.handler.replace(Some(data.connect_local(
             "finished",
             false,
-            clone!(@weak self as engine, @weak data => @default-return None, move |_| {
-                engine.finished(&data);
-                None
-            }),
+            clone!(
+                #[weak(rename_to=engine)]
+                self,
+                #[weak]
+                data,
+                #[upgrade_or]
+                None,
+                move |_| {
+                    engine.finished(&data);
+                    None
+                }
+            ),
         )));
     }
 

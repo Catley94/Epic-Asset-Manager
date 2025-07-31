@@ -20,7 +20,7 @@ pub enum Msg {
 pub mod imp {
     use super::*;
     use crate::window::EpicAssetManagerWindow;
-    use gtk4::glib::{ParamSpec, ParamSpecString, Priority};
+    use gtk4::glib::{ParamSpec, ParamSpecString};
     use once_cell::sync::OnceCell;
     use std::cell::RefCell;
 
@@ -40,8 +40,8 @@ pub mod imp {
         pub download_manager: OnceCell<crate::ui::widgets::download_manager::EpicDownloadManager>,
         pub actions: gio::SimpleActionGroup,
         pub docker_versions: RefCell<Option<HashMap<String, Vec<String>>>>,
-        pub sender: gtk4::glib::Sender<super::Msg>,
-        pub receiver: RefCell<Option<gtk4::glib::Receiver<super::Msg>>>,
+        pub sender: async_channel::Sender<Msg>,
+        pub receiver: RefCell<Option<async_channel::Receiver<Msg>>>,
         pub settings: gio::Settings,
         selected: RefCell<Option<String>>,
         download_size: RefCell<Option<String>>,
@@ -54,7 +54,7 @@ pub mod imp {
         type ParentType = gtk4::Box;
 
         fn new() -> Self {
-            let (sender, receiver) = gtk4::glib::MainContext::channel(Priority::default());
+            let (sender, receiver) = async_channel::unbounded();
             Self {
                 details: TemplateChild::default(),
                 details_revealer: TemplateChild::default(),
@@ -177,9 +177,13 @@ impl DockerEngineDownload {
         action!(
             actions,
             "install",
-            clone!(@weak self as details => move |_, _| {
-                details.install_engine();
-            })
+            clone!(
+                #[weak(rename_to=details)]
+                self,
+                move |_, _| {
+                    details.install_engine();
+                }
+            )
         );
     }
 
@@ -188,10 +192,7 @@ impl DockerEngineDownload {
         if let Some(ver) = self.selected() {
             if let Some(dm) = self_.download_manager.get() {
                 dm.download_engine_from_docker(&ver);
-                self.show_confirmation(
-                    "<b><big>Engine Install Initialized</big></b>
-<i>See Header Bar for details</i>",
-                );
+                self.show_confirmation("Install initialized, see headerbar for details");
             }
         }
     }
@@ -205,11 +206,16 @@ impl DockerEngineDownload {
         self_.confirmation_revealer.set_vexpand_set(true);
         self_.confirmation_revealer.set_vexpand(true);
         glib::timeout_add_seconds_local(
-            2,
-            clone!(@weak self as obj => @default-panic, move || {
-                obj.show_details();
-                glib::ControlFlow::Break
-            }),
+            5,
+            clone!(
+                #[weak(rename_to=obj)]
+                self,
+                #[upgrade_or_panic]
+                move || {
+                    obj.show_details();
+                    glib::ControlFlow::Break
+                }
+            ),
         );
     }
 
@@ -225,13 +231,16 @@ impl DockerEngineDownload {
     pub fn setup_messaging(&self) {
         let self_ = self.imp();
         let receiver = self_.receiver.borrow_mut().take().unwrap();
-        receiver.attach(
-            None,
-            clone!(@weak self as docker => @default-panic, move |msg| {
-                docker.update(msg);
-                glib::ControlFlow::Continue
-            }),
-        );
+        glib::spawn_future_local(clone!(
+            #[weak(rename_to=docker)]
+            self,
+            #[upgrade_or_panic]
+            async move {
+                while let Ok(response) = receiver.recv().await {
+                    docker.update(response);
+                }
+            }
+        ));
     }
 
     fn type_selected(&self, check: &gtk4::CheckButton, combo: &gtk4::ComboBoxText) {
@@ -298,12 +307,14 @@ impl DockerEngineDownload {
                                     Err(e) => {
                                         error!("Failed to get tags: {e:?}");
                                         sender
-                                            .send(Msg::Error(format!("Failed to get tags: {e:?}")))
+                                            .send_blocking(Msg::Error(format!(
+                                                "Failed to get tags: {e:?}"
+                                            )))
                                             .unwrap();
                                     }
                                 }
 
-                                sender.send(Msg::EngineVersions(result)).unwrap();
+                                sender.send_blocking(Msg::EngineVersions(result)).unwrap();
                             });
                         },
                     );
@@ -321,11 +332,15 @@ impl DockerEngineDownload {
             }
             (*self_.docker_versions.borrow()).as_ref().map_or_else(|| {
                 let label = gtk4::Label::builder()
-                    .hexpand(true)
                     .use_markup(true)
-                    .label("<b>Please configure github token in <a href=\"preferences\">Preferences</a></b>")
+                    .css_classes(["heading"])
+                    .margin_start(12)
+                    .margin_end(12)
+                    .margin_top(8)
+                    .margin_bottom(8)
+                    .label("Please configure github token in <a href=\"preferences\">Preferences</a>")
                     .build();
-                label.connect_activate_link(clone!(@weak self as details => @default-return glib::Propagation::Stop, move |_, uri| {
+                label.connect_activate_link(clone!(#[weak(rename_to=details)] self, #[upgrade_or] glib::Propagation::Stop, move |_, uri| {
                     details.open_preferences(uri);
                     glib::Propagation::Stop
                 }));
@@ -334,43 +349,33 @@ impl DockerEngineDownload {
                 get_action!(self_.actions, @install).set_enabled(false);
             }, |versions| {
                 let combo = gtk4::ComboBoxText::new();
-                combo.set_hexpand(true);
                 self_
                     .details
-                    .append(&crate::window::EpicAssetManagerWindow::create_details_row(
-                        "Available Versions",
+                    .append(&crate::window::EpicAssetManagerWindow::create_widget_row(
+                        "Available Versions:",
                         &combo,
-                        &self_.details_group,
                     ));
 
-                let row = gtk4::ListBoxRow::new();
-                row.set_tooltip_markup(Some(
-                    "Include <b>Template Projects</b> and <b>Debug symbols</b>?",
-                ));
-                let title = gtk4::Label::builder().label("Additional Content").build();
-                let b = gtk4::Box::new(gtk4::Orientation::Horizontal, 5);
-                b.append(&title);
-                let info = gtk4::Image::from_icon_name("dialog-information-symbolic");
-                b.append(&info);
-                self_.details_group.add_widget(&b);
-                let bo = gtk4::Box::new(gtk4::Orientation::Horizontal, 5);
-                bo.append(&b);
-                let check = gtk4::CheckButton::builder()
+                let check = gtk4::CheckButton::builder() // Maybe use GtkSwitch instead?
                     .active(true)
                     .hexpand(true)
                     .build();
-                bo.append(&check);
-                row.set_child(Some(&bo));
-                self_.details.append(&row);
+                let row = gtk4::ComboBoxText::new();
+                self_
+                    .details
+                    .append(&crate::window::EpicAssetManagerWindow::create_widget_row(
+                        "Include Template Projects and Debug symbols",
+                        &check,
+                    ));
 
                 combo.connect_changed(
-                    clone!(@weak self as detail, @weak check as check => move |c| {
+                    clone!(#[weak(rename_to=detail)] self, #[weak] check, move |c| {
                         detail.version_selected(c, &check);
                     }),
                 );
 
                 check.connect_toggled(
-                    clone!(@weak self as detail, @weak combo as combo => move |c| {
+                    clone!(#[weak(rename_to=detail)] self, #[weak] combo, move |c| {
                         detail.type_selected(c, &combo);
                     }),
                 );
@@ -389,6 +394,7 @@ impl DockerEngineDownload {
                     }
                 }
 
+                // TODO: Switch to create_info_row()
                 let size_label = gtk4::Label::builder()
                     .name("size_label")
                     .label("unknown")
@@ -400,10 +406,9 @@ impl DockerEngineDownload {
 
                 self_
                     .details
-                    .append(&crate::window::EpicAssetManagerWindow::create_details_row(
-                        "Download Size",
+                    .append(&crate::window::EpicAssetManagerWindow::create_widget_row(
+                        "Download Size:",
                         &size_label,
-                        &self_.details_group,
                     ));
             });
         }
@@ -451,7 +456,7 @@ impl DockerEngineDownload {
             Msg::ManifestSize(size) => {
                 let byte = byte_unit::Byte::from_u64(size)
                     .get_appropriate_unit(byte_unit::UnitType::Decimal);
-                self_.settings.strv("unreal-engine-directories").get(0).map_or_else(|| if let Some(w) = self_.window.get() {
+                self_.settings.strv("unreal-engine-directories").first().map_or_else(|| if let Some(w) = self_.window.get() {
                                   w.add_notification("missing engine config", "Unable to install engine missing Unreal Engine Directories configuration", gtk4::MessageType::Error);
                                   get_action!(self_.actions, @install).set_enabled(false);
                               }, |p| {
@@ -513,7 +518,7 @@ impl DockerEngineDownload {
                     match client.get_manifest("epicgames/unreal-engine", &version) {
                         Ok(manifest) => match manifest.download_size() {
                             Ok(size) => {
-                                sender.send(Msg::ManifestSize(size)).unwrap();
+                                sender.send_blocking(Msg::ManifestSize(size)).unwrap();
                             }
                             Err(e) => {
                                 error!("Unable to get manifest size: {:?}", e);

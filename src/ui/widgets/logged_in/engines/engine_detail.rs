@@ -161,9 +161,13 @@ impl EpicEngineDetails {
         action!(
             self_.actions,
             "launch",
-            clone!(@weak self as engines => move |_, _| {
-                engines.launch_engine();
-            })
+            clone!(
+                #[weak(rename_to=engines)]
+                self,
+                move |_, _| {
+                    engines.launch_engine();
+                }
+            )
         );
     }
 
@@ -190,7 +194,7 @@ impl EpicEngineDetails {
                 });
             });
         };
-        self.show_confirmation("<b><big>Engine Launched</big></b>");
+        self.show_confirmation("Engine Launched");
     }
 
     fn show_confirmation(&self, markup: &str) {
@@ -198,14 +202,20 @@ impl EpicEngineDetails {
         self_.details_revealer.set_reveal_child(false);
         self_.details_revealer.set_vexpand(false);
         self_.confirmation_label.set_markup(markup);
+        self_.confirmation_label.add_css_class("title-2");
         self_.confirmation_revealer.set_reveal_child(true);
         self_.confirmation_revealer.set_vexpand_set(true);
         glib::timeout_add_seconds_local(
             2,
-            clone!(@weak self as obj => @default-panic, move || {
-                obj.show_details();
-                glib::ControlFlow::Break
-            }),
+            clone!(
+                #[weak(rename_to=obj)]
+                self,
+                #[upgrade_or_panic]
+                move || {
+                    obj.show_details();
+                    glib::ControlFlow::Break
+                }
+            ),
         );
     }
 
@@ -233,42 +243,35 @@ impl EpicEngineDetails {
         // Path
         if let Some(path) = &data.path() {
             self_.logs.add_path(&format!("{}/Engine", &path));
-            let path_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
-            let label = gtk4::Label::new(Some(path));
-            label.set_xalign(0.0);
-            label.set_hexpand(true);
-            path_box.append(&label);
-            let button = gtk4::Button::with_icon_and_label("system-file-manager-symbolic", "Open");
-            button.connect_clicked(clone!(@weak self as engine => move |_| {
-                engine.open_dir();
-            }));
-            path_box.append(&button);
+            let text = format!("Path: {path}");
+            let widget = gtk4::Button::with_icon_and_label("folder-open-symbolic", "Open");
+            widget.connect_clicked(clone!(
+                #[weak(rename_to=engine)]
+                self,
+                move |_| {
+                    engine.open_dir();
+                }
+            ));
             self_
                 .details
-                .append(&crate::window::EpicAssetManagerWindow::create_details_row(
-                    "Path",
-                    &path_box,
-                    &self_.details_group,
+                .append(&crate::window::EpicAssetManagerWindow::create_widget_row(
+                    &text, &widget,
                 ));
         }
 
         if let Some(branch) = &data.branch() {
             self_
                 .details
-                .append(&crate::window::EpicAssetManagerWindow::create_details_row(
-                    "Branch",
-                    &gtk4::Label::new(Some(branch)),
-                    &self_.details_group,
+                .append(&crate::window::EpicAssetManagerWindow::create_info_row(
+                    "Branch: {&branch}",
                 ));
         }
 
         if data.needs_update() {
             self_
                 .details
-                .append(&crate::window::EpicAssetManagerWindow::create_details_row(
-                    "Needs update",
-                    &gtk4::Label::new(None),
-                    &self_.details_group,
+                .append(&crate::window::EpicAssetManagerWindow::create_info_row(
+                    "Needs update: {&None}",
                 ));
         }
     }
